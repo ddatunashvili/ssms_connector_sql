@@ -31,15 +31,25 @@ EXEC mydb.dbo.mysql_refresh_views;                                -- manual sync
 SELECT * FROM OPENQUERY(MYSQL_MYDB, 'SELECT * FROM my_table LIMIT 10');
 ```
 
-### Keeping views in sync
+### Real-time two-way sync
 
-Views track MySQL tables: new tables get a view, changed columns get re-created, dropped tables lose theirs. Sync happens:
+| Done in SSMS | Happens on the MySQL server |
+|---|---|
+| `SELECT` on a view | live read |
+| `INSERT` / `UPDATE` / `DELETE` on a view | instantly applied |
+| *New → Table…* (designer) or `CREATE TABLE` | table created instantly (types mapped, PK, identity → AUTO_INCREMENT) |
+| Delete a view / table | `DROP TABLE` instantly |
+| Rename a view / table | `RENAME TABLE` instantly |
+| `EXEC dbo.mysql_exec '<MySQL SQL>'` | runs as-is (e.g. `ALTER TABLE`), views synced |
 
-- instantly after `dbo.mysql_exec` runs DDL,
-- every N minutes while MySqlConnect is open (option in the Bridge dialog),
-- whenever you run `EXEC dbo.mysql_refresh_views`.
+| Done on the MySQL server (phpMyAdmin, other apps) | Shows up in SSMS |
+|---|---|
+| Data changes | immediately (views read live) |
+| New / changed / dropped tables | within N seconds while MySqlConnect is open (default 10), or on `EXEC dbo.mysql_refresh_views` |
 
-Each sync is one small query (a column signature per table), so only changed views are rebuilt. In SSMS press **F5** on the *Views* folder to see new ones.
+> **Deleting a view in SSMS drops the real MySQL table and its data.**
+
+A table created in SSMS stays a local table until the next sync (seconds), then becomes a live view; rows typed in meanwhile are copied to MySQL. Changing columns of an existing table: use `dbo.mysql_exec 'ALTER TABLE ...'` (SSMS cannot design a view). Press **F5** in Object Explorer to see new objects.
 
 Requires SQL Server LocalDB or Express ([download](https://www.microsoft.com/sql-server/sql-server-downloads)) and SSMS.
 

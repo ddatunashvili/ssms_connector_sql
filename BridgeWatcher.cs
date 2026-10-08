@@ -7,10 +7,10 @@ public static class BridgeWatcher
 
     public static string Status { get; private set; } = "";
 
-    public static void Start(string instance, string db, int minutes)
+    public static void Start(string instance, string db, int seconds)
     {
         Stop(db);
-        var t = new System.Windows.Forms.Timer { Interval = minutes * 60_000 };
+        var t = new System.Windows.Forms.Timer { Interval = seconds * 1000 };
         var busy = false;
         t.Tick += async (_, _) =>
         {
@@ -19,9 +19,9 @@ public static class BridgeWatcher
             try
             {
                 var r = await BridgeSql.Refresh(instance, db);
-                Status = $"{db} views synced {DateTime.Now:HH:mm} (+{r.Created} ~{r.Changed} -{r.Dropped})";
+                Status = $"{db} in sync {DateTime.Now:HH:mm:ss}" + (r.Created + r.Changed + r.Dropped > 0 ? $" (+{r.Created} ~{r.Changed} -{r.Dropped})" : "");
             }
-            catch (Exception ex) { Status = $"{db} view sync failed {DateTime.Now:HH:mm}: {ex.Message.Split('\n')[0]}"; }
+            catch (Exception ex) { Status = $"{db} sync failed {DateTime.Now:HH:mm:ss}: {ex.Message.Split('\n')[0]}"; }
             finally { busy = false; }
         };
         t.Start();
