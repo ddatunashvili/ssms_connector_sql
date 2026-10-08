@@ -20,6 +20,7 @@ public class ConnectForm : Form
     readonly Button btnConnect = new() { Text = "Connect", Width = 90 };
     readonly Button btnCancel = new() { Text = "Cancel", Width = 90, DialogResult = DialogResult.Cancel };
     readonly Button btnDelete = new() { Text = "Delete", Width = 70 };
+    readonly Button btnBridge = new() { Text = "Bridge to SSMS…", Width = 130 };
 
     List<ConnInfo> saved = ConnStore.Load();
     public ConnInfo? Result { get; private set; }
@@ -76,7 +77,7 @@ public class ConnectForm : Form
         grid.Controls.Add(chkRemember);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 44, Padding = new Padding(8) };
-        buttons.Controls.AddRange(new Control[] { btnCancel, btnConnect, btnTest });
+        buttons.Controls.AddRange(new Control[] { btnCancel, btnConnect, btnTest, btnBridge });
 
         Controls.Add(grid);
         Controls.Add(buttons);
@@ -93,6 +94,13 @@ public class ConnectForm : Form
         btnTest.Click += async (_, _) => await Test();
         btnConnect.Click += async (_, _) => await ConnectClicked();
         btnDelete.Click += (_, _) => DeleteSaved();
+        btnBridge.Click += (_, _) =>
+        {
+            var c = Current();
+            if (!Validate(c)) return;
+            using var dlg = new BridgeForm(c);
+            dlg.ShowDialog(this);
+        };
     }
 
     void TryParsePaste()

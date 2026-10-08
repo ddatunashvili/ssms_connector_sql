@@ -1,4 +1,4 @@
-<p align="center"><img src="icon.png" width="128" alt="icon"></p>
+﻿<p align="center"><img src="icon.png" width="128" alt="icon"></p>
 
 # SSMS Connector SQL (MySQL Connect)
 
@@ -9,6 +9,25 @@ SSMS (SQL Server Management Studio) only speaks Microsoft SQL Server's TDS proto
 ## Download
 
 Grab `MySqlConnect.exe` from [Releases](../../releases). Single file, no install, no .NET runtime required (Windows 10/11 x64).
+
+## Bridge to SSMS
+
+Click **Bridge to SSMS…** (connect dialog or toolbar). The app:
+
+1. Installs the MariaDB ODBC driver if missing (downloaded from mariadb.com, SHA-256 verified, admin prompt).
+2. Starts SQL Server LocalDB `(localdb)\MSSQLLocalDB` (or uses a local SQL Server / Express instance).
+3. Creates a linked server (`MYSQL_<db>`) pointing at your MySQL host.
+4. Creates a local database with one view per MySQL table.
+
+Then in SSMS connect to `(localdb)\MSSQLLocalDB` with **Windows Authentication** → *Databases → &lt;db&gt; → Views* → right-click → *Select Top 1000 Rows*.
+
+```sql
+SELECT * FROM mydb.dbo.my_table;                          -- via views
+SELECT * FROM OPENQUERY(MYSQL_MYDB, 'SELECT * FROM my_table LIMIT 10');
+EXEC ('UPDATE my_table SET x = 1 WHERE id = 5') AT MYSQL_MYDB;   -- writes
+```
+
+Requires SQL Server LocalDB or Express ([download](https://www.microsoft.com/sql-server/sql-server-downloads)) and SSMS.
 
 ## Features
 

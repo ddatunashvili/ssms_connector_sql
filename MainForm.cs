@@ -39,9 +39,10 @@ public class MainForm : Form
         var btnConnect = new ToolStripButton("Connect…");
         var btnDisconnect = new ToolStripButton("Disconnect");
         var btnNew = new ToolStripButton("New Query");
+        var btnBridge = new ToolStripButton("Bridge to SSMS…");
         tools.Items.AddRange(new ToolStripItem[]
         {
-            btnConnect, btnDisconnect, new ToolStripSeparator(), btnNew, new ToolStripSeparator(),
+            btnConnect, btnDisconnect, btnBridge, new ToolStripSeparator(), btnNew, new ToolStripSeparator(),
             new ToolStripLabel("Database:"), cboDb, btnExec, btnCancel,
         });
 
@@ -78,6 +79,12 @@ public class MainForm : Form
 
         btnConnect.Click += (_, _) => ShowConnect();
         btnDisconnect.Click += async (_, _) => await Disconnect();
+        btnBridge.Click += (_, _) =>
+        {
+            if (info == null) { ShowConnect(); return; }
+            using var dlg = new BridgeForm(info);
+            dlg.ShowDialog(this);
+        };
         btnNew.Click += (_, _) => { editor.Clear(); editor.Focus(); };
         btnExec.Click += async (_, _) => await Execute();
         btnCancel.Click += (_, _) => cts?.Cancel();
