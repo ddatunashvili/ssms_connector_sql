@@ -19,6 +19,7 @@ public class MainForm : Form
     readonly ToolStripButton btnCancel = new("■ Cancel") { Enabled = false };
     readonly ToolStripStatusLabel stServer = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     readonly ToolStripStatusLabel stInfo = new();
+    readonly ToolStripStatusLabel stSync = new() { ForeColor = SystemColors.GrayText };
     readonly ContextMenuStrip tableMenu = new();
 
     ConnInfo? info;
@@ -47,7 +48,10 @@ public class MainForm : Form
         });
 
         var status = new StatusStrip();
-        status.Items.AddRange(new ToolStripItem[] { stServer, stInfo });
+        status.Items.AddRange(new ToolStripItem[] { stServer, stSync, stInfo });
+        var syncTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+        syncTimer.Tick += (_, _) => stSync.Text = BridgeWatcher.Status;
+        syncTimer.Start();
 
         var objHeader = new Label { Text = "Object Explorer", Dock = DockStyle.Top, Height = 24, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(4, 0, 0, 0), BackColor = SystemColors.ControlLight };
         var left = new Panel { Dock = DockStyle.Fill };

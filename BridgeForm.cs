@@ -19,6 +19,8 @@ public class BridgeForm : Form
     readonly TextBox txtLinked = new() { Dock = DockStyle.Fill };
     readonly TextBox txtLocalDb = new() { Dock = DockStyle.Fill };
     readonly CheckBox chkViews = new() { Text = "Create a view for every MySQL table (shows in SSMS Object Explorer)", AutoSize = true, Checked = true };
+    readonly CheckBox chkAuto = new() { Text = "Auto-refresh views every", AutoSize = true, Checked = true, Margin = new Padding(0, 4, 0, 0) };
+    readonly NumericUpDown numMinutes = new() { Minimum = 1, Maximum = 1440, Value = 5, Width = 60 };
     readonly TextBox log = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 9.5f), BackColor = SystemColors.Window };
     readonly Button btnRun = new() { Text = "Create bridge", Width = 120 };
     readonly Button btnRemove = new() { Text = "Remove bridge", Width = 120 };
@@ -58,6 +60,13 @@ public class BridgeForm : Form
         Row("SSMS database name:", txtLocalDb);
         grid.Controls.Add(new Label());
         grid.Controls.Add(chkViews);
+        var autoRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        autoRow.Controls.Add(chkAuto);
+        autoRow.Controls.Add(numMinutes);
+        autoRow.Controls.Add(new Label { Text = "minutes while this app is open", AutoSize = true, Margin = new Padding(3, 6, 0, 0) });
+        grid.Controls.Add(new Label());
+        grid.Controls.Add(autoRow);
+        chkViews.CheckedChanged += (_, _) => chkAuto.Enabled = numMinutes.Enabled = chkViews.Checked;
 
         var logPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 4, 12, 4) };
         logPanel.Controls.Add(log);
@@ -74,6 +83,7 @@ public class BridgeForm : Form
         cboInstance.Text = cboInstance.Items.Count > 0 ? cboInstance.Items[0]!.ToString() : LocalDb;
         var baseName = Sanitize(info.Database.Length > 0 ? info.Database : info.Host);
         txtLinked.Text = ("MYSQL_" + baseName).ToUpperInvariant();
+        txtLinked.Leave += (_, _) => txtLinked.Text = Sanitize(txtLinked.Text);
         txtLocalDb.Text = baseName;
 
         btnRun.Click += async (_, _) => await Run(create: true);
@@ -183,7 +193,7 @@ public class BridgeForm : Form
 
     async Task Run(bool create)
     {
-        var linked = txtLinked.Text.Trim();
+        var linked = Sanitize(txtLinked.Text.Trim());
         var localDb = txtLocalDb.Text.Trim();
         if (linked.Length == 0 || localDb.Length == 0) { Log("Names cannot be empty."); return; }
 
@@ -210,6 +220,7 @@ public class BridgeForm : Form
             await Exec(cn, $"IF EXISTS (SELECT 1 FROM sys.servers WHERE name = {N(linked)}) EXEC sp_dropserver {N(linked)}, 'droplogins';");
             if (!create)
             {
+                BridgeWatcher.Stop(localDb);
                 Log($"✔ Linked server {linked} removed. (Database {localDb} left in place — delete it in SSMS if you want.)");
                 return;
             }
@@ -240,7 +251,12 @@ public class BridgeForm : Form
             Log($"    SELECT * FROM {B(localDb)}.dbo.[your_table];");
             Log($"    SELECT * FROM OPENQUERY({B(linked)}, 'SELECT * FROM your_table LIMIT 10');");
             Log($"    EXEC ('UPDATE your_table SET col = 1 WHERE id = 5') AT {B(linked)};");
-            Log("  Added/removed tables in MySQL? Press \"Create bridge\" again to refresh the views.");
+            if (chkViews.Checked)
+            {
+                Log($"    EXEC {B(localDb)}.dbo.mysql_exec 'CREATE TABLE t (id INT PRIMARY KEY)';  -- runs on MySQL + refreshes views at once");
+                Log($"    EXEC {B(localDb)}.dbo.mysql_refresh_views;  -- refresh views manually");
+                Log("  In SSMS press F5 on the Views folder to see new views.");
+            }
         }
         catch (Exception ex)
         {
@@ -258,24 +274,23 @@ public class BridgeForm : Form
     async Task CreateViews(SqlConnection cn, string linked, string localDb)
     {
         await Exec(cn, $"IF DB_ID({N(localDb)}) IS NULL CREATE DATABASE {B(localDb)};");
-
-        var tables = new List<string>();
-        var mysqlSql = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME";
-        await using (var cmd = new SqlCommand($"SELECT * FROM OPENQUERY({B(linked)}, {N(mysqlSql)})", cn) { CommandTimeout = 120 })
-        await using (var r = await cmd.ExecuteReaderAsync())
-            while (await r.ReadAsync()) tables.Add(r.GetString(0));
-
         cn.ChangeDatabase(localDb);
-        int ok = 0;
-        foreach (var t in tables)
-        {
-            var inner = "SELECT * FROM `" + t.Replace("`", "``") + "`";
-            var sql = $"CREATE OR ALTER VIEW dbo.{B(t)} AS SELECT * FROM OPENQUERY({B(linked)}, {N(inner)});";
-            try { await Exec(cn, sql); ok++; }
-            catch (Exception ex) { Log($"  ! view {t}: {ex.Message.Split('\n')[0]}"); }
-        }
+        await Exec(cn, BridgeSql.RefreshProc(linked));
+        await Exec(cn, BridgeSql.ExecProc(linked));
         cn.ChangeDatabase("master");
-        Log($"✔ Database {localDb}: {ok}/{tables.Count} table views created.");
+        Log("✔ Installed dbo.mysql_refresh_views and dbo.mysql_exec.");
+
+        var instance = cboInstance.Text.Trim();
+        var r = await BridgeSql.Refresh(instance, localDb);
+        foreach (var m in r.Messages) Log("  ! " + m);
+        Log($"✔ Database {localDb}: {r.Total} MySQL tables → {r.Created} views created, {r.Changed} updated, {r.Dropped} removed.");
+
+        if (chkAuto.Checked)
+        {
+            BridgeWatcher.Start(instance, localDb, (int)numMinutes.Value);
+            Log($"✔ Views auto-refresh every {numMinutes.Value} min while MySqlConnect is open.");
+        }
+        else BridgeWatcher.Stop(localDb);
     }
 
     static string? FindSsms()

@@ -17,15 +17,29 @@ Click **Bridge to SSMS…** (connect dialog or toolbar). The app:
 1. Installs the MariaDB ODBC driver if missing (downloaded from mariadb.com, SHA-256 verified, admin prompt).
 2. Starts SQL Server LocalDB `(localdb)\MSSQLLocalDB` (or uses a local SQL Server / Express instance).
 3. Creates a linked server (`MYSQL_<db>`) pointing at your MySQL host.
-4. Creates a local database with one view per MySQL table.
+4. Creates a local database with one view per MySQL table, plus `dbo.mysql_refresh_views` and `dbo.mysql_exec`.
 
 Then in SSMS connect to `(localdb)\MSSQLLocalDB` with **Windows Authentication** → *Databases → &lt;db&gt; → Views* → right-click → *Select Top 1000 Rows*.
 
+Data is live: every query and write goes straight to the MySQL server, nothing is copied.
+
 ```sql
-SELECT * FROM mydb.dbo.my_table;                          -- via views
+SELECT * FROM mydb.dbo.my_table;                                  -- live read
+UPDATE mydb.dbo.my_table SET x = 1 WHERE id = 5;                  -- live write through view
+EXEC mydb.dbo.mysql_exec 'ALTER TABLE my_table ADD note TEXT';    -- MySQL SQL + instant view sync
+EXEC mydb.dbo.mysql_refresh_views;                                -- manual sync
 SELECT * FROM OPENQUERY(MYSQL_MYDB, 'SELECT * FROM my_table LIMIT 10');
-EXEC ('UPDATE my_table SET x = 1 WHERE id = 5') AT MYSQL_MYDB;   -- writes
 ```
+
+### Keeping views in sync
+
+Views track MySQL tables: new tables get a view, changed columns get re-created, dropped tables lose theirs. Sync happens:
+
+- instantly after `dbo.mysql_exec` runs DDL,
+- every N minutes while MySqlConnect is open (option in the Bridge dialog),
+- whenever you run `EXEC dbo.mysql_refresh_views`.
+
+Each sync is one small query (a column signature per table), so only changed views are rebuilt. In SSMS press **F5** on the *Views* folder to see new ones.
 
 Requires SQL Server LocalDB or Express ([download](https://www.microsoft.com/sql-server/sql-server-downloads)) and SSMS.
 
